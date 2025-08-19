@@ -1,0 +1,19 @@
+id,domain,text,weight,value
+DG1,Data Governance,Executive-sponsored Data Governance Council exists and meets with decisions tracked.,1.5,4
+DG2,Data Governance,Data ownership & RACI for key datasets are documented and socialized.,1.2,4
+DG3,Data Governance,"Enterprise data policies (access, retention, classification) are approved and enforced.",1.3,4
+DQ1,Data Quality,"Quality dimensions (accuracy, completeness, timeliness) have SLAs and targets.",1.4,4
+DQ2,Data Quality,Automated profiling/monitoring with alerting on critical pipelines.,1.5,2
+DQ3,Data Quality,Issue triage workflow exists with steward ownership and MTTR tracked.,1.1,4
+MD1,Metadata & Catalog,Central catalog documents business/technical lineage for critical assets.,1.4,5
+MD2,Metadata & Catalog,Glossary terms have owners and are linked to datasets/dashboards.,1.2,5
+MD3,Metadata & Catalog,"Active metadata drives discovery, impact analysis, and approvals.",1.4,4
+PS1,Privacy & Security,Data classification & retention schedules applied and auditable.,1.5,4
+PS2,Privacy & Security,"PII handling: DPIAs, consent, minimization, and subject rights processes.",1.6,3
+PS3,Privacy & Security,"Security controls: encryption, key management, IAM least-privilege, monitoring.",1.5,3
+DA1,Data Architecture,Documented reference architecture (ingest→storage→processing→serve) with standards.,1.3,5
+DA2,Data Architecture,"CI/CD for data (tests, deploys, rollback), infra as code, reproducibility.",1.5,3
+DA3,Data Architecture,"Cost/perf governance (tiering, query policies, SLOs) with regular review.",1.2,3
+AI1,AI Governance,AI use-case intake & risk classification process (incl. prohibitions).,1.5,5
+AI2,AI Governance,"Model lifecycle controls: data provenance, evals, bias testing, human oversight.",1.6,3
+AI3,AI Governance,"Transparency & incident response: model cards, logs, rollback, user notices.",1.4,3
