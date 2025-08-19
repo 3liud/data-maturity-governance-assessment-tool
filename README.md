@@ -7,10 +7,10 @@ A lightweight internal tool to assess organizational data maturity across six do
 ## Screenshots
 
 **Assessment**
-![Assessment UI](0.png)
+![Assessment UI](assets/0.png)
 
 **Insights**
-![Results & Insights](3.png)
+![Results & Insights](assets/3.png)
 
 ---
 
@@ -133,32 +133,8 @@ RECS = {
 
 ---
 
-## Theming
-
-* Boolean switch toggles `theme-light` / `theme-dark` class on the root container.
-* Plotly layouts follow the active theme (font, grid, background).
-* Charts use fixed heights and non-responsive mode to avoid layout creep.
-
----
-
-## Common Issues
-
-* **SyntaxError in ternary:** Python uses `A if cond else B`, not `A if cond : B`.
-* **Radar axis “grows”:** Ensure polar `radialaxis` has `range=[0,100]` and `autorange=False`. Keep `height` fixed on the figure and `responsive=False` in `dcc.Graph`.
-* **PDF export fails:** Install `kaleido` and `reportlab`.
-
-  ```bash
-  pip install kaleido reportlab
-  ```
-* **No favicon:** put `assets/favicon.ico` in place; Dash will auto-serve it.
-
----
 
 ## Development Tips
 
 * Hot reload: run `app.run(debug=True)`.
-* Add a custom tab title:
 
-  ```python
-  app = dash.Dash(__name__, title="Data Maturity & Governance")
-  ```
