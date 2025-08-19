@@ -3,38 +3,29 @@
 import io
 
 import dash
-from dash import dcc, html, Input, Output, State, ALL
 import dash_daq as daq
-import pandas as pd
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import plotly.io as pio
+from dash import ALL, Input, Output, State, dcc, html
 from pptx import Presentation
 from pptx.util import Inches
-
-# PDF export (with embedded chart images)
-from reportlab.platypus import (
-    SimpleDocTemplate,
-    Table,
-    TableStyle,
-    Paragraph,
-    Spacer,
-    ListFlowable,
-    ListItem,
-    Image as RLImage,
-)
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet
+# PDF export (with embedded chart images)
+from reportlab.platypus import Image as RLImage
+from reportlab.platypus import (ListFlowable, ListItem, Paragraph,
+                                SimpleDocTemplate, Spacer, Table, TableStyle)
 
-from config import DOMAINS, LIKERT, QUESTIONS, FRAMEWORK_ROWS, RECS
+from config import DOMAINS, FRAMEWORK_ROWS, LIKERT, QUESTIONS, RECS
 
 app = dash.Dash(__name__, suppress_callback_exceptions=True)
 app.title = "Maturity & Governance Assessment"
 server = app.server
 
 
-# ---------------------------- Config sanity (optional) ----------------------------
 def _validate_config() -> None:
     """
     Check the sanity of the configuration in `config.py`.
@@ -65,16 +56,48 @@ def _validate_config() -> None:
 _validate_config()
 
 
-# ---------------------------- Helpers ----------------------------
+# ----------- Helpers -------------
 def likert_to_pct(v):
+    """
+    Convert a Likert scale value (1-5) to a percentage.
+
+    1  -> 0%
+    2  -> 25%
+    3  -> 50%
+    4  -> 75%
+    5  -> 100%
+    """
+
     return round((int(v) - 1) / 4 * 100, 2)
 
 
 def pct_to_level(p):
+    """
+    Convert a percentage to a level (1-5).
+
+    0%  -> 1
+    25% -> 2
+    50% -> 3
+    75% -> 4
+    100%-> 5
+
+    :param p: percentage (0-100)
+    :return: level (1-5)
+    """
     return int(min(5, max(1, round((p / 100) * 4 + 1))))
 
 
 def _as_list(x):
+    """
+    Convert the input to a list.
+
+    If the input is already a list or tuple, return it as is.
+    If the input is None or pd.NA, return an empty list.
+    Otherwise, wrap the input in a list.
+
+    :param x: input to convert to a list
+    :return: a list
+    """
     return (
         list(x) if isinstance(x, (list, tuple)) else ([] if x in (None, pd.NA) else [x])
     )
@@ -84,13 +107,26 @@ def _slug(s: str):
     return "".join(ch.lower() if ch.isalnum() else "-" for ch in s).strip("-")
 
 
-# Single source of truth for chart sizes
+# for chart sizes
 RADAR_H = 360
 BAR_H = 360
 HEAT_H = 520
 
 
 def _base_fig_layout(fig, theme="light", height=360):
+    """
+    Apply a consistent layout to a figure.
+
+    This sets the font to a contrasting color for light/dark themes,
+    and sets the grid color to a contrasting color. It also sets the
+    axis colors to match the text color.
+
+    :param fig: a figure to update
+    :param theme: a string, either "light" or "dark"
+    :param height: the height of the figure in pixels
+    :return: the updated figure
+    """
+
     font_color = "#f6f7fb" if theme == "dark" else "#0b1020"
     grid_color = "#334155" if theme == "dark" else "#CBD5E1"
     axis_color = font_color
@@ -122,8 +158,14 @@ def _base_fig_layout(fig, theme="light", height=360):
     return fig
 
 
-# ---------------------------- Layout ----------------------------
+# -------------- Layout --------------------
 def build_question_cards():
+    """
+    Build a list of HTML cards, one per domain, each containing a sequence of
+    questions with Likert scale input controls.
+
+    :return: a list of HTML Div elements, each representing a domain card
+    """
     groups = {}
     for q in QUESTIONS:
         groups.setdefault(q["domain"], []).append(q)
@@ -322,8 +364,19 @@ app.layout = html.Div(
 )
 
 
-# ---------------------------- Scoring & Aggregation ----------------------------
+# -------------- Scoring & Aggregation ---------------
 def compute_scores(resp_df):
+    """
+    Compute overall and domain-level scores from a response dataframe.
+
+    Args:
+        resp_df (pd.DataFrame): response dataframe with columns "value" and "weight"
+
+    Returns:
+        tuple: (domain_scores, overall)
+            domain_scores (dict): mapping of domain to score
+            overall (float): mean of domain scores, rounded to 2 decimal places
+    """
     resp_df = resp_df.copy()
     resp_df["pct"] = resp_df["value"].apply(likert_to_pct)
     resp_df["wx"] = resp_df["pct"] * resp_df["weight"]
@@ -337,6 +390,15 @@ def compute_scores(resp_df):
 
 
 def control_coverage_matrix(resp_df):
+    """
+    Generate a dataframe with one row per (Framework, Domain) combination, with a "Coverage" column indicating the mean control coverage score for that combination.
+
+    Args:
+        resp_df (pd.DataFrame): response dataframe with columns "domain", "value", and "tags"
+
+    Returns:
+        pd.DataFrame: coverage matrix
+    """
     resp_df = resp_df.copy()
     resp_df["tags"] = resp_df["tags"].apply(_as_list)
     rows = []
@@ -351,6 +413,13 @@ def control_coverage_matrix(resp_df):
 
 
 def recommendations(domain_scores):
+    """
+    Return a list of at most 10 action items, sorted by score (ascending),
+    where each item is a dict with keys "domain", "score", and "action".
+    The items are generated by looking up the top 2 recommended actions for
+    each domain in the input domain_scores, and ranking them by score.
+    If domain_scores is empty, returns an empty list.
+    """
     if not domain_scores:
         return []
     items = []
@@ -361,8 +430,18 @@ def recommendations(domain_scores):
     return sorted(items, key=lambda x: x["score"])[:10]
 
 
-# ---------------------------- Figures (fixed sizes, consistent) ----------------------------
+# ---------- Figures (fixed sizes, consistent) ------------------
 def radar_figure(domain_scores, theme="light"):
+    """
+    Return a radar figure with a fixed size and consistent layout.
+
+    Args:
+        domain_scores (dict): mapping of domain to score
+        theme (str, optional): light or dark. Defaults to "light".
+
+    Returns:
+        go.Figure: radar figure
+    """
     vals = [float(domain_scores.get(d, 0.0)) for d in DOMAINS]
     cats = DOMAINS
     cats2, vals2 = cats + [cats[0]], vals + [vals[0]]
@@ -401,6 +480,16 @@ def radar_figure(domain_scores, theme="light"):
 
 
 def bar_figure(domain_scores, theme="light"):
+    """
+    Return a bar figure with a fixed size and consistent layout.
+
+    Args:
+        domain_scores (dict): mapping of domain to score
+        theme (str, optional): light or dark. Defaults to "light".
+
+    Returns:
+        go.Figure: bar figure
+    """
     vals = [float(domain_scores.get(d, 0.0)) for d in DOMAINS]
     fig = go.Figure(go.Bar(x=DOMAINS, y=vals))
     fig.update_layout(
@@ -414,6 +503,16 @@ def bar_figure(domain_scores, theme="light"):
 
 
 def heatmap_figure(mat_df, theme="light"):
+    """
+    Return a heatmap figure with a fixed size and consistent layout.
+
+    Args:
+        mat_df (pd.DataFrame): coverage matrix dataframe
+        theme (str, optional): light or dark. Defaults to "light".
+
+    Returns:
+        go.Figure: heatmap figure
+    """
     if mat_df is None or mat_df.empty:
         pv = pd.DataFrame(index=FRAMEWORK_ROWS, columns=DOMAINS, dtype=float)
     else:
@@ -488,7 +587,7 @@ def heatmap_figure(mat_df, theme="light"):
     return _base_fig_layout(fig, theme, height=HEAT_H)
 
 
-# ---------------------------- Callbacks ----------------------------
+# -------- Callbacks ------------------
 @app.callback(
     Output("responses-store", "data"),
     Input("submit-assessment", "n_clicks"),
@@ -500,6 +599,21 @@ def heatmap_figure(mat_df, theme="light"):
     prevent_initial_call=True,
 )
 def on_submit(_, qbank, org, assessor, sector, values):
+    """
+    Stores the user's responses in the "responses-store" store.
+
+    Arguments:
+        n_clicks (int): Click count of the submit button.
+        qbank (list): The question bank, as stored in the "questions-store".
+        org (str): The organization name, as entered in the "org-name" input field.
+        assessor (str): The assessor name, as entered in the "assessor" input field.
+        sector (str): The sector name, as entered in the "sector" input field.
+        values (list): The user's responses, as entered in the question input fields.
+
+    Returns:
+        dict: A dict containing the user's responses, domain scores, overall maturity score,
+            control coverage matrix, and recommendations.
+    """
     qbank = qbank or []
     vals = values or []
     rows = []
@@ -549,6 +663,16 @@ def on_submit(_, qbank, org, assessor, sector, values):
     prevent_initial_call=True,
 )
 def update_results(data, theme):
+    """
+    Updates the KPIs, radar, bar, heatmap, and recommendations based on the user's responses.
+
+    Args:
+        data (dict): The user's responses, as stored in the "responses-store".
+        theme (str): The theme name ("light" or "dark"), as stored in the "theme-store".
+
+    Returns:
+        tuple: A tuple containing the updated KPIs, radar, bar, heatmap, and recommendations.
+    """
     if not data:
         raise dash.exceptions.PreventUpdate
 
@@ -598,6 +722,16 @@ def update_results(data, theme):
     prevent_initial_call=True,
 )
 def download_csv(_, data):
+    """
+    Download the user's responses as a CSV file.
+
+    Args:
+        _ (int): Click count of the "Download CSV" button.
+        data (dict): The user's responses, as stored in the "responses-store".
+
+    Returns:
+        dcc.SendData: A dcc.SendData object containing the CSV data.
+    """
     if not data:
         raise dash.exceptions.PreventUpdate
     df = pd.DataFrame(data["responses"])
@@ -606,6 +740,22 @@ def download_csv(_, data):
 
 
 def _write_ppt_bytes(buf, data):
+    """
+    Write a PowerPoint presentation with the following slides to a bytes buffer.
+
+    1. Title slide with organization, assessor, and sector information.
+    2. Summary slide with overall maturity score, method, and domain information.
+    3. Domain scores table.
+    4. Top recommended actions table.
+    5. Control coverage matrix (framework × domain).
+
+    Args:
+        buf (BytesIO): A BytesIO object to write the presentation to.
+        data (dict): The user's responses and computed results.
+
+    Returns:
+        None
+    """
     prs = Presentation()
     slide = prs.slides.add_slide(prs.slide_layouts[0])
     slide.shapes.title.text = "Data Maturity & Governance Assessment"
@@ -684,6 +834,16 @@ def _write_ppt_bytes(buf, data):
     prevent_initial_call=True,
 )
 def download_ppt(_, data):
+    """
+    Download the user's responses as a PPTX file.
+
+    Args:
+        _ (int): Click count of the "Download PPTX" button.
+        data (dict): The user's responses, as stored in the "responses-store".
+
+    Returns:
+        dcc.SendData: A dcc.SendData object containing the PPTX data.
+    """
     if not data:
         raise dash.exceptions.PreventUpdate
     return dcc.send_bytes(
@@ -693,6 +853,18 @@ def download_ppt(_, data):
 
 def _img_from_fig(fig, width=720, height=420, scale=2):
     # Requires kaleido installed
+    """
+    Convert a plotly figure to a PNG image bytes buffer.
+
+    Args:
+        fig (plotly.graph_objects.Figure): The figure to convert.
+        width (int, optional): Image width in pixels. Defaults to 720.
+        height (int, optional): Image height in pixels. Defaults to 420.
+        scale (int, optional): Image resolution multiplier. Defaults to 2.
+
+    Returns:
+        io.BytesIO: A bytes buffer containing the PNG image data.
+    """
     png_bytes = pio.to_image(fig, format="png", width=width, height=height, scale=scale)
     return io.BytesIO(png_bytes)
 
@@ -837,6 +1009,17 @@ def _write_pdf_bytes(buf, data, theme):
     prevent_initial_call=True,
 )
 def download_pdf(_, data, theme):
+    """
+    Download the user's responses as a PDF file.
+
+    Args:
+        _ (int): Click count of the "Download PDF" button.
+        data (dict): The user's responses, as stored in the "responses-store".
+        theme (str, optional): The theme to apply to the PDF (light or dark). Defaults to "light".
+
+    Returns:
+        dcc.SendData: A dcc.SendData object containing the PDF data.
+    """
     if not data:
         raise dash.exceptions.PreventUpdate
     return dcc.send_bytes(
@@ -852,6 +1035,18 @@ def download_pdf(_, data, theme):
     prevent_initial_call=True,
 )
 def switch_to_results(n):
+    """
+    Switch the app to the "Results" tab after submitting the assessment.
+
+    Args:
+        n (int): The number of times the "Submit Assessment" button has been clicked.
+
+    Returns:
+        str: The ID of the tab to switch to.
+
+    Raises:
+        dash.exceptions.PreventUpdate: If the input is not a number.
+    """
     if n:
         return "tab-results"
     raise dash.exceptions.PreventUpdate
@@ -864,10 +1059,19 @@ def switch_to_results(n):
     Input("theme-switch", "on"),
 )
 def apply_theme(is_on):
+    """
+    Toggle the page theme class and store the current theme value.
+
+    Args:
+        is_on (bool): The on/off state of the theme switch.
+
+    Returns:
+        tuple: A pair of (page class name, theme name).
+    """
     theme = "dark" if is_on else "light"
     return f"page theme-{theme}", theme
 
 
-# ---------------------------- Main ----------------------------
+# ---------- Main -------------------
 if __name__ == "__main__":
     app.run(debug=False)

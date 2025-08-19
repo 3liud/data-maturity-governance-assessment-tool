@@ -138,3 +138,4 @@ RECS = {
 
 * Hot reload: run `app.run(debug=True)`.
 
+Majority of the docstrings generated using Windsurf
